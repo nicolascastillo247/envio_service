@@ -1,104 +1,93 @@
-# Microservicio de Envío
+# Microservicio Envio (envio_service)
 
-## server.port=9095
+Microservicio del sistema **EcoMarket SPA** encargado de la gestion de envios y rutas de entrega. Crea envios a partir de pedidos, controla su estado de despacho y administra rutas de entrega que agrupan varios envios.
+
+## Tecnologias
+
+- Java 25
+- Spring Boot 4.1.0
+- Spring Data JPA
+- MySQL (produccion) / H2 (pruebas)
+- Lombok
+- Maven
+
+## Puerto
+
+```
+9095
+```
+
+## Estructura del paquete
+
+`com.example.envio_service`
+
+## Modelo de datos
+
+### Entidad: Envio (tabla `envios`)
+
+| Campo | Tipo | Descripcion |
+|---|---|---|
+| idEnvio | Long | Identificador, autogenerado |
+| idPedido | Long | Referencia al pedido, debe ser valido (obligatorio) |
+| direccionEnvio | String | Direccion de entrega (se completa desde el Pedido) |
+| estadoEnvio | EstadoEnvio | Estado del envio (enum) |
+| fechaEnvio | LocalDate | Fecha en que se genera el envio |
+| fechaEntrega | LocalDate | Fecha de entrega (se fija al pasar a ENTREGADO) |
+
+### Enum: EstadoEnvio
+
+`PREPARANDO`, `EN_CAMINO`, `ENTREGADO`
+
+### Entidad: RutaEntrega (tabla `rutas_entrega`)
+
+| Campo | Tipo | Descripcion |
+|---|---|---|
+| idRuta | Long | Identificador, autogenerado |
+| comunaDestino | String | Comuna de destino de la ruta (obligatorio) |
+| enviosIds | List<Long> | Lista de ids de envios incluidos en la ruta (al menos uno) |
+
+### DTO: PedidoDTO
+
+Datos que se reciben del Pedido: `idPedido`, `nombreCliente` y `direccionEnvio` (objeto que se aplana a un String con calle, numero, comuna y ciudad).
 
 ## Endpoints
 
-### POST `/api/v1/envios`
-Crea un nuevo envío asociado a un pedido.
+### Envios — ruta base `/api/v1/envios`
 
-**JSON de entrada:**
-```json
-{
-    "idPedido": 1
-}
+| Metodo | Ruta | Descripcion | Respuestas |
+|---|---|---|---|
+| POST | `/api/v1/envios` | Crea un envio a partir de un pedido | 200 OK / 404 NOT FOUND / 409 CONFLICT |
+| GET | `/api/v1/envios` | Lista todos los envios | 200 OK / 404 NOT FOUND |
+| GET | `/api/v1/envios/{id}` | Obtiene un envio por id | 200 OK / 404 NOT FOUND |
+| PUT | `/api/v1/envios/{id}/estado?estadoEnvio=` | Actualiza el estado del envio | 200 OK / 404 NOT FOUND |
+| DELETE | `/api/v1/envios/{id}` | Elimina un envio | 200 OK / 404 NOT FOUND |
+
+### Rutas de entrega — ruta base `/api/v1/rutas`
+
+| Metodo | Ruta | Descripcion | Respuestas |
+|---|---|---|---|
+| POST | `/api/v1/rutas` | Crea una ruta de entrega | 200 OK / 409 CONFLICT |
+| GET | `/api/v1/rutas` | Lista todas las rutas | 200 OK / 404 NOT FOUND |
+| GET | `/api/v1/rutas/{id}` | Obtiene una ruta por id | 200 OK / 404 NOT FOUND |
+| PUT | `/api/v1/rutas/{id}` | Actualiza una ruta | 200 OK / 404 NOT FOUND |
+| DELETE | `/api/v1/rutas/{id}` | Elimina una ruta | 200 OK / 404 NOT FOUND |
+
+## Logica destacada
+
+- Al crear un envio se consulta el Pedido; si existe, se copia su direccion, se fija la fecha de envio y, si no trae estado, queda en `PREPARANDO`.
+- Al actualizar el estado a `ENTREGADO`, se fija automaticamente la `fechaEntrega`.
+
+## Comunicacion con otros microservicios
+
+Mediante `RestTemplate`:
+
+- **Pedidos** (`http://localhost:8093/api/v1/pedidos/{idPedido}`): obtiene los datos del pedido (direccion, cliente) al crear el envio.
+
+
+## Como ejecutar las pruebas
+
+```bash
+./mvnw test
 ```
 
-**JSON de entrada con estado personalizado:**
-```json
-{
-    "idPedido": 1,
-    "estadoEnvio": "EN_CAMINO"
-}
-```
-
-**Respuestas posibles:**
-| Situación | Status | Mensaje |
-|---|---|---|
-| Envío creado | 200 OK | Objeto Envio |
-| Datos inválidos | 400 BAD_REQUEST | `El idPedido es obligatorio` |
-| Pedido no encontrado | 404 NOT_FOUND | `Pedido no encontrado` |
-| Error general | 409 CONFLICT | `Error al crear el envio` |
-
----
-
-### GET `/api/v1/envios`
-Lista todos los envíos registrados.
-
----
-
-### GET `/api/v1/envios/{id}`
-Obtiene un envío por su id.
-
----
-
-### PUT `/api/v1/envios/{id}/estado?estadoEnvio={estado}`
-Actualiza el estado de un envío.
-
-**Estados disponibles:**
-| Estado | Descripción |
-|---|---|
-| `PREPARANDO` | Envío en preparación |
-| `EN_CAMINO` | Envío en camino |
-| `ENTREGADO` | Envío entregado — registra fechaEntrega automáticamente |
-
-**Ejemplos:**
-```
-PUT /api/v1/envios/1/estado?estadoEnvio=EN_CAMINO
-PUT /api/v1/envios/1/estado?estadoEnvio=ENTREGADO
-```
-
----
-
-### DELETE `/api/v1/envios/{id}`
-Elimina un envío por su id.
-
----
-
-### POST `/api/v1/rutas`
-Crea una ruta de entrega que agrupa varios envíos hacia una comuna.
-
-**JSON de entrada:**
-```json
-{
-    "comunaDestino": "Concepción",
-    "enviosIds": [1, 2, 3]
-}
-```
-
----
-
-### GET `/api/v1/rutas`
-Lista todas las rutas registradas.
-
----
-
-### GET `/api/v1/rutas/{id}`
-Obtiene una ruta por su id.
-
----
-
-### PUT `/api/v1/rutas/{id}`
-Actualiza la comuna y los envíos de una ruta.
-
----
-
-### DELETE `/api/v1/rutas/{id}`
-Elimina una ruta por su id.
-
----
-
-## Dependencias
-| MS | Puerto | Para qué |
-|---|---|---|
-| MS Pedidos | 9091 | Obtener dirección de envío del pedido |
+Las pruebas usan H2 en memoria (perfil `test`). Incluye pruebas unitarias de los dos services (Mockito), de los dos controllers (`@WebMvcTest`) y de integracion (`@SpringBootTest` con H2).
